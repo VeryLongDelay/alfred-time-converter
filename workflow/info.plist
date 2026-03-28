@@ -194,100 +194,152 @@ Please refer to https://github.com/verylongdelay/alfred-time-converter for detai
 			<key>config</key>
 			<dict>
 				<key>default</key>
-				<string>America/New_York</string>
-				<key>placeholder</key>
-				<string>America/New_York</string>
+				<string>America/New_York,UTC,Asia/Singapore,Australia/Sydney</string>
 				<key>required</key>
 				<false/>
 				<key>trim</key>
 				<true/>
+				<key>verticalsize</key>
+				<integer>3</integer>
 			</dict>
 			<key>description</key>
-			<string>First extra timezone to show</string>
+			<string>Extra Timezones you wish to dispay, comma-separated</string>
 			<key>label</key>
-			<string>Extra Timezone 1</string>
+			<string>Extra Timezones</string>
 			<key>type</key>
-			<string>textfield</string>
+			<string>textarea</string>
 			<key>variable</key>
-			<string>UT_TZ1</string>
+			<string>varUT_EXTRA_TZS</string>
 		</dict>
 		<dict>
 			<key>config</key>
 			<dict>
 				<key>default</key>
-				<string>UTC</string>
-				<key>placeholder</key>
-				<string>UTC</string>
+				<true/>
 				<key>required</key>
 				<false/>
-				<key>trim</key>
-				<true/>
+				<key>text</key>
+				<string>(Unchecked = 24H clock)</string>
 			</dict>
 			<key>description</key>
-			<string>Second Extra Timezone to show</string>
+			<string></string>
 			<key>label</key>
-			<string>Extra Timezone 2</string>
+			<string>12 Hour Clock</string>
 			<key>type</key>
-			<string>textfield</string>
+			<string>checkbox</string>
 			<key>variable</key>
-			<string>UT_TZ2</string>
+			<string>UT_USE_12H</string>
 		</dict>
 		<dict>
 			<key>config</key>
 			<dict>
 				<key>default</key>
-				<string>Asia/Singapore</string>
+				<string>%Y-%m-%d</string>
 				<key>placeholder</key>
-				<string>Asia/Singapore</string>
+				<string>%Y-%m-%d</string>
 				<key>required</key>
-				<false/>
-				<key>trim</key>
 				<true/>
+				<key>trim</key>
+				<false/>
 			</dict>
 			<key>description</key>
-			<string>Third Extra Timezone to show</string>
+			<string></string>
 			<key>label</key>
-			<string>Extra Timezone 3</string>
+			<string>Date Format</string>
 			<key>type</key>
 			<string>textfield</string>
 			<key>variable</key>
-			<string>UT_TZ3</string>
+			<string>UT_DATE_FORMAT</string>
 		</dict>
 		<dict>
 			<key>config</key>
 			<dict>
 				<key>default</key>
-				<string>Australia/Sydney</string>
+				<string>%Y-%m-%d</string>
 				<key>placeholder</key>
-				<string>Australia/Sydney</string>
+				<string>%Y-%m-%d</string>
 				<key>required</key>
-				<false/>
-				<key>trim</key>
 				<true/>
+				<key>trim</key>
+				<false/>
 			</dict>
 			<key>description</key>
-			<string>Fourth Extra Timezone to show</string>
+			<string></string>
 			<key>label</key>
-			<string>Extra Timezone 3</string>
+			<string>Compact Date Format</string>
 			<key>type</key>
 			<string>textfield</string>
 			<key>variable</key>
-			<string>UT_TZ4</string>
+			<string>UT_COMPACT_DATE_FORMAT</string>
+		</dict>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>default</key>
+				<string>%Y-%m-%d %H:%M</string>
+				<key>placeholder</key>
+				<string>%Y-%m-%d %H:%M</string>
+				<key>required</key>
+				<true/>
+				<key>trim</key>
+				<false/>
+			</dict>
+			<key>description</key>
+			<string></string>
+			<key>label</key>
+			<string>Markdown Date Format</string>
+			<key>type</key>
+			<string>textfield</string>
+			<key>variable</key>
+			<string>UT_MARKDOWN_DATE_FORMAT</string>
+		</dict>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>default</key>
+				<string>R</string>
+				<key>pairs</key>
+				<array>
+					<array>
+						<string>Relative</string>
+						<string>R</string>
+					</array>
+					<array>
+						<string>Long Date/Short Time</string>
+						<string>F</string>
+					</array>
+					<array>
+						<string>Full Date/Short Time</string>
+						<string>f</string>
+					</array>
+					<array>
+						<string>Full Date</string>
+						<string>D</string>
+					</array>
+					<array>
+						<string>Short Date</string>
+						<string>d</string>
+					</array>
+					<array>
+						<string>Long Time</string>
+						<string>T</string>
+					</array>
+					<array>
+						<string>Short Time</string>
+						<string>t</string>
+					</array>
+				</array>
+			</dict>
+			<key>description</key>
+			<string></string>
+			<key>label</key>
+			<string>Discord Timestring Style</string>
+			<key>type</key>
+			<string>popupbutton</string>
+			<key>variable</key>
+			<string>UT_DISCORD_STYLE</string>
 		</dict>
 	</array>
-	<key>variables</key>
-	<dict>
-		<key>UT_LOCAL_TZ</key>
-		<string>America/Vancouver</string>
-		<key>UT_TZ1</key>
-		<string>UTC</string>
-		<key>UT_TZ2</key>
-		<string>America/New_York</string>
-		<key>UT_TZ3</key>
-		<string>Europe/London</string>
-		<key>UT_TZ4</key>
-		<string>Asia/Tokyo</string>
-	</dict>
 	<key>version</key>
 	<string>1.0.0</string>
 	<key>webaddress</key>

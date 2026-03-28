@@ -8,10 +8,7 @@ import sys
 
 BASE_ENV = {
     "UT_LOCAL_TZ": "America/Vancouver",
-    "UT_TZ1": "UTC",
-    "UT_TZ2": "America/New_York",
-    "UT_TZ3": "Europe/London",
-    "UT_TZ4": "Asia/Tokyo",
+    "UT_EXTRA_TZS": "UTC,America/New_York,Europe/London,Asia/Tokyo",
     "UT_NOW": "2026-03-27T12:00:00Z",
 }
 
@@ -189,13 +186,12 @@ def test_duplicate_configured_zones_deduped() -> None:
         "now",
         {
             "UT_LOCAL_TZ": "America/Vancouver",
-            "UT_TZ1": "UTC",
-            "UT_TZ2": "UTC",
-            "UT_TZ3": "America/Vancouver",
-            "UT_TZ4": "Asia/Tokyo",
+            "UT_EXTRA_TZS": "UTC,UTC,America/Vancouver,Asia/Tokyo",
         },
     )
+
     all_titles = titles(result)
+
     assert_equal(
         sum(title.startswith("America/Vancouver: ") for title in all_titles),
         1,
@@ -273,6 +269,182 @@ def test_result_shape() -> None:
             assert_true(isinstance(item["arg"], str), "arg must be a string")
 
 
+def test_tomorrow_9am() -> None:
+    result = run_case("tomorrow 9am")
+    assert_equal(extract_iso(result), "2026-03-28T16:00:00Z", "tomorrow parsing failed")
+
+
+def test_today_9am() -> None:
+    result = run_case("today 9am")
+    assert_equal(extract_iso(result), "2026-03-27T16:00:00Z", "today parsing failed")
+
+
+def test_yesterday_9am() -> None:
+    result = run_case("yesterday 9am")
+    assert_equal(
+        extract_iso(result), "2026-03-26T16:00:00Z", "yesterday parsing failed"
+    )
+
+
+def test_in_3_hours() -> None:
+    result = run_case("in 3 hours")
+    assert_equal(
+        extract_iso(result), "2026-03-27T15:00:00Z", "in 3 hours parsing failed"
+    )
+
+
+def test_in_90_minutes() -> None:
+    result = run_case("in 90 minutes")
+    assert_equal(
+        extract_iso(result), "2026-03-27T13:30:00Z", "in 90 minutes parsing failed"
+    )
+
+
+def test_next_week_9am() -> None:
+    result = run_case("next week 9am")
+    assert_equal(
+        extract_iso(result), "2026-04-03T16:00:00Z", "next week parsing failed"
+    )
+
+
+def test_true_abbreviation_suffix() -> None:
+    result = run_case("9am PST")
+    assert_equal(
+        extract_iso(result), "2026-03-27T16:00:00Z", "PST suffix parsing failed"
+    )
+
+
+def test_true_abbreviation_prefix() -> None:
+    result = run_case("PST 9am")
+    assert_equal(
+        extract_iso(result), "2026-03-27T16:00:00Z", "PST prefix parsing failed"
+    )
+
+
+def test_discord_utility_item() -> None:
+    result = run_case("now")
+    item = find_item(result, "Discord timestamp: ")
+    assert_equal(item["arg"], "<t:1774612800:f>", "Discord timestamp failed")
+
+
+def test_rfc3339_utility_item() -> None:
+    result = run_case("now")
+    item = find_item(result, "RFC 3339: ")
+    assert_equal(item["arg"], "2026-03-27T12:00:00Z", "RFC 3339 failed")
+
+
+def test_compact_modifier() -> None:
+    result = run_case("now")
+    item = find_item(result, "America/Vancouver: ")
+    assert_true("alt+shift" in item["mods"], "missing compact modifier")
+
+
+def test_ctrl_modifier() -> None:
+    result = run_case("now")
+    item = find_item(result, "America/Vancouver: ")
+    assert_true(
+        item["mods"]["ctrl"]["arg"].endswith("UTC"), "ctrl should copy UTC formatted"
+    )
+
+
+def test_shift_modifier() -> None:
+    result = run_case("now")
+    item = find_item(result, "Asia/Tokyo: ")
+    assert_true(
+        item["mods"]["shift"]["arg"].endswith("PDT"),
+        "shift should copy configured local formatted",
+    )
+
+
+def test_empty_extra_timezones_skipped() -> None:
+    result = run_case(
+        "now",
+        {
+            "UT_LOCAL_TZ": "America/Vancouver",
+            "UT_EXTRA_TZS": " , ,UTC,   ,",
+        },
+    )
+
+    all_titles = titles(result)
+
+    assert_equal(
+        sum(title.startswith("America/Vancouver: ") for title in all_titles),
+        1,
+        "Local timezone should appear once",
+    )
+
+    assert_equal(
+        sum(title.startswith("UTC: ") for title in all_titles),
+        1,
+        "UTC should appear once",
+    )
+
+    assert_true(
+        not any(title.startswith("Asia/Tokyo: ") for title in all_titles),
+        "Tokyo should not appear when not configured",
+    )
+
+
+def test_invalid_extra_timezones_skipped() -> None:
+    result = run_case(
+        "now",
+        {
+            "UT_EXTRA_TZS": "UTC,Not/AZone,Asia/Tokyo,Mars/Olympus",
+        },
+    )
+
+    all_titles = titles(result)
+
+    assert_equal(
+        sum(title.startswith("UTC: ") for title in all_titles),
+        1,
+        "UTC should appear once",
+    )
+    assert_equal(
+        sum(title.startswith("Asia/Tokyo: ") for title in all_titles),
+        1,
+        "Tokyo should appear once",
+    )
+
+    assert_true(
+        not any(title.startswith("Not/AZone: ") for title in all_titles),
+        "Invalid timezone should be skipped",
+    )
+    assert_true(
+        not any(title.startswith("Mars/Olympus: ") for title in all_titles),
+        "Invalid timezone should be skipped",
+    )
+
+
+def test_csv_extra_timezones_override_legacy() -> None:
+    result = run_case(
+        "now",
+        {
+            "UT_EXTRA_TZS": "UTC,Asia/Tokyo",
+            "UT_TZ1": "America/New_York",  # should be ignored
+            "UT_TZ2": "Europe/London",
+        },
+    )
+
+    all_titles = titles(result)
+
+    assert_equal(
+        sum(title.startswith("UTC: ") for title in all_titles),
+        1,
+        "UTC should appear once",
+    )
+    assert_equal(
+        sum(title.startswith("Asia/Tokyo: ") for title in all_titles),
+        1,
+        "Tokyo should appear once",
+    )
+
+    assert_true(
+        not any(title.startswith("America/New_York: ") for title in all_titles),
+        "Legacy zones should be ignored",
+    )
+
+
 def main() -> None:
     tests = [
         ("help", test_help),
@@ -299,6 +471,22 @@ def main() -> None:
         ("dst after fallback", test_dst_unambiguous_after_fall_back),
         ("now with zone token", test_now_with_zone_token_still_works),
         ("result shape", test_result_shape),
+        ("tomorrow 9am", test_tomorrow_9am),
+        ("today 9am", test_today_9am),
+        ("yesterday 9am", test_yesterday_9am),
+        ("in 3 hours", test_in_3_hours),
+        ("in 90 minutes", test_in_90_minutes),
+        ("next week 9am", test_next_week_9am),
+        ("true abbreviation suffix", test_true_abbreviation_suffix),
+        ("true abbreviation prefix", test_true_abbreviation_prefix),
+        ("discord utility item", test_discord_utility_item),
+        ("rfc3339 utility item", test_rfc3339_utility_item),
+        ("compact modifier", test_compact_modifier),
+        ("ctrl modifier", test_ctrl_modifier),
+        ("shift modifier", test_shift_modifier),
+        ("empty extra zones skipped", test_empty_extra_timezones_skipped),
+        ("invalid extra zones skipped", test_invalid_extra_timezones_skipped),
+        ("csv extra zones override legacy", test_csv_extra_timezones_override_legacy),
     ]
 
     for name, fn in tests:
