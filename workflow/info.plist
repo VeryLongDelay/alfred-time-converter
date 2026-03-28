@@ -1,0 +1,296 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>bundleid</key>
+	<string>com.VeryLongDelay.UnixTimeConverter</string>
+	<key>category</key>
+	<string>Productivity</string>
+	<key>connections</key>
+	<dict>
+		<key>D5C9799D-6A35-401B-9E21-5F78462CDF30</key>
+		<array>
+			<dict>
+				<key>destinationuid</key>
+				<string>D49241C5-CBC8-4AAE-AD8F-3D7CF2225640</string>
+				<key>modifiers</key>
+				<integer>0</integer>
+				<key>modifiersubtext</key>
+				<string></string>
+				<key>vitoclose</key>
+				<false/>
+			</dict>
+			<dict>
+				<key>destinationuid</key>
+				<string>16583B31-1931-4450-83C9-E65114DB7307</string>
+				<key>modifiers</key>
+				<integer>0</integer>
+				<key>modifiersubtext</key>
+				<string></string>
+				<key>vitoclose</key>
+				<false/>
+			</dict>
+		</array>
+	</dict>
+	<key>createdby</key>
+	<string>verylongdelay</string>
+	<key>description</key>
+	<string>Unixtime Converter</string>
+	<key>disabled</key>
+	<false/>
+	<key>name</key>
+	<string>Unixtime Converter</string>
+	<key>objects</key>
+	<array>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>lastpathcomponent</key>
+				<false/>
+				<key>onlyshowifquerypopulated</key>
+				<true/>
+				<key>removeextension</key>
+				<false/>
+				<key>text</key>
+				<string>Copied: {query}</string>
+				<key>title</key>
+				<string>Unixtime Converter</string>
+			</dict>
+			<key>type</key>
+			<string>alfred.workflow.output.notification</string>
+			<key>uid</key>
+			<string>D49241C5-CBC8-4AAE-AD8F-3D7CF2225640</string>
+			<key>version</key>
+			<integer>1</integer>
+		</dict>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>alfredfiltersresults</key>
+				<false/>
+				<key>alfredfiltersresultsmatchmode</key>
+				<integer>0</integer>
+				<key>argumenttreatemptyqueryasnil</key>
+				<true/>
+				<key>argumenttrimmode</key>
+				<integer>0</integer>
+				<key>argumenttype</key>
+				<integer>0</integer>
+				<key>escaping</key>
+				<integer>102</integer>
+				<key>keyword</key>
+				<string>ut</string>
+				<key>queuedelaycustom</key>
+				<integer>3</integer>
+				<key>queuedelayimmediatelyinitially</key>
+				<true/>
+				<key>queuedelaymode</key>
+				<integer>0</integer>
+				<key>queuemode</key>
+				<integer>1</integer>
+				<key>runningsubtext</key>
+				<string></string>
+				<key>script</key>
+				<string>query=$1
+
+./script.sh $query</string>
+				<key>scriptargtype</key>
+				<integer>1</integer>
+				<key>scriptfile</key>
+				<string></string>
+				<key>subtext</key>
+				<string>Converts Unix Timestamp &lt;-&gt; DateTime string</string>
+				<key>title</key>
+				<string>Unixtime Converter</string>
+				<key>type</key>
+				<integer>0</integer>
+				<key>withspace</key>
+				<true/>
+			</dict>
+			<key>type</key>
+			<string>alfred.workflow.input.scriptfilter</string>
+			<key>uid</key>
+			<string>D5C9799D-6A35-401B-9E21-5F78462CDF30</string>
+			<key>version</key>
+			<integer>3</integer>
+		</dict>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>autopaste</key>
+				<false/>
+				<key>clipboardtext</key>
+				<string>{query}</string>
+				<key>ignoredynamicplaceholders</key>
+				<false/>
+				<key>transient</key>
+				<false/>
+			</dict>
+			<key>type</key>
+			<string>alfred.workflow.output.clipboard</string>
+			<key>uid</key>
+			<string>16583B31-1931-4450-83C9-E65114DB7307</string>
+			<key>version</key>
+			<integer>3</integer>
+		</dict>
+	</array>
+	<key>readme</key>
+	<string>A simple workflow to convert Unixtime &lt;-&gt; DateTime string.
+
+
+## Usage
+Activate Alfred and type `ut`.
+Input date or unix time and you see converted results.
+
+Please refer to https://github.com/verylongdelay/alfred-time-converter for details.</string>
+	<key>uidata</key>
+	<dict>
+		<key>16583B31-1931-4450-83C9-E65114DB7307</key>
+		<dict>
+			<key>xpos</key>
+			<real>615</real>
+			<key>ypos</key>
+			<real>365</real>
+		</dict>
+		<key>D49241C5-CBC8-4AAE-AD8F-3D7CF2225640</key>
+		<dict>
+			<key>xpos</key>
+			<real>615</real>
+			<key>ypos</key>
+			<real>225</real>
+		</dict>
+		<key>D5C9799D-6A35-401B-9E21-5F78462CDF30</key>
+		<dict>
+			<key>xpos</key>
+			<real>85</real>
+			<key>ypos</key>
+			<real>295</real>
+		</dict>
+	</dict>
+	<key>userconfigurationconfig</key>
+	<array>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>default</key>
+				<string>America/Vancouver</string>
+				<key>placeholder</key>
+				<string>America/Vancouver</string>
+				<key>required</key>
+				<false/>
+				<key>trim</key>
+				<true/>
+			</dict>
+			<key>description</key>
+			<string>Your local timezone, in IANA time zone identifier format.</string>
+			<key>label</key>
+			<string>Local Timezone</string>
+			<key>type</key>
+			<string>textfield</string>
+			<key>variable</key>
+			<string>UT_LOCAL_TZ</string>
+		</dict>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>default</key>
+				<string>America/New_York</string>
+				<key>placeholder</key>
+				<string>America/New_York</string>
+				<key>required</key>
+				<false/>
+				<key>trim</key>
+				<true/>
+			</dict>
+			<key>description</key>
+			<string>First extra timezone to show</string>
+			<key>label</key>
+			<string>Extra Timezone 1</string>
+			<key>type</key>
+			<string>textfield</string>
+			<key>variable</key>
+			<string>UT_TZ1</string>
+		</dict>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>default</key>
+				<string>UTC</string>
+				<key>placeholder</key>
+				<string>UTC</string>
+				<key>required</key>
+				<false/>
+				<key>trim</key>
+				<true/>
+			</dict>
+			<key>description</key>
+			<string>Second Extra Timezone to show</string>
+			<key>label</key>
+			<string>Extra Timezone 2</string>
+			<key>type</key>
+			<string>textfield</string>
+			<key>variable</key>
+			<string>UT_TZ2</string>
+		</dict>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>default</key>
+				<string>Asia/Singapore</string>
+				<key>placeholder</key>
+				<string>Asia/Singapore</string>
+				<key>required</key>
+				<false/>
+				<key>trim</key>
+				<true/>
+			</dict>
+			<key>description</key>
+			<string>Third Extra Timezone to show</string>
+			<key>label</key>
+			<string>Extra Timezone 3</string>
+			<key>type</key>
+			<string>textfield</string>
+			<key>variable</key>
+			<string>UT_TZ3</string>
+		</dict>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>default</key>
+				<string>Australia/Sydney</string>
+				<key>placeholder</key>
+				<string>Australia/Sydney</string>
+				<key>required</key>
+				<false/>
+				<key>trim</key>
+				<true/>
+			</dict>
+			<key>description</key>
+			<string>Fourth Extra Timezone to show</string>
+			<key>label</key>
+			<string>Extra Timezone 3</string>
+			<key>type</key>
+			<string>textfield</string>
+			<key>variable</key>
+			<string>UT_TZ4</string>
+		</dict>
+	</array>
+	<key>variables</key>
+	<dict>
+		<key>UT_LOCAL_TZ</key>
+		<string>America/Vancouver</string>
+		<key>UT_TZ1</key>
+		<string>UTC</string>
+		<key>UT_TZ2</key>
+		<string>America/New_York</string>
+		<key>UT_TZ3</key>
+		<string>Europe/London</string>
+		<key>UT_TZ4</key>
+		<string>Asia/Tokyo</string>
+	</dict>
+	<key>version</key>
+	<string>1.0.0</string>
+	<key>webaddress</key>
+	<string>https://github.com/verylongdelay/alfred-unixtime-converter</string>
+</dict>
+</plist>

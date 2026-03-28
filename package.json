@@ -1,0 +1,15 @@
+{
+  "name": "ut-time-converter",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Alfred workflow for converting ISO, Unix epoch, UTC, and local times across configurable time zones.",
+  "scripts": {
+    "run": "node main.js",
+    "test": "node test.js",
+    "build": "rm -f ut-time-converter-source.zip && zip -r ut-time-converter-source.zip workflow package.json README.md test.js -x '*.DS_Store' -x '*.alfredworkflow'",
+    "build:workflow": "rm -f UT-Time-Converter.alfredworkflow && cd workflow && zip -r ../UT-Time-Converter.alfredworkflow . -x '*.DS_Store'"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
