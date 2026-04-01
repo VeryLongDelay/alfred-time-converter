@@ -181,6 +181,102 @@ def test_invalid_time() -> None:
     assert_invalid(result, "Could not parse input.")
 
 
+def test_date_arithmetic_iso_plus_days() -> None:
+    result = run_case("2026-04-01 +7")
+    assert_equal(
+        extract_iso(result),
+        "2026-04-08T07:00:00Z",
+        "ISO date arithmetic should add days at local midnight",
+    )
+
+
+def test_date_arithmetic_month_name_defaults_current_year() -> None:
+    result = run_case("April 1 +7")
+    assert_equal(
+        extract_iso(result),
+        "2026-04-08T07:00:00Z",
+        "month-name date arithmetic should default to current year",
+    )
+
+
+def test_date_arithmetic_month_name_minus_days() -> None:
+    result = run_case("April 1 -7")
+    assert_equal(
+        extract_iso(result),
+        "2026-03-25T07:00:00Z",
+        "month-name date arithmetic should subtract days",
+    )
+
+
+def test_date_arithmetic_forced_zone_uses_zone_year() -> None:
+    result = run_case(
+        "April 1 +7 utc",
+        {
+            "UT_NOW": "2026-01-01T00:30:00Z",
+            "UT_LOCAL_TZ": "America/Vancouver",
+        },
+    )
+    assert_equal(
+        extract_iso(result),
+        "2026-04-08T00:00:00Z",
+        "missing year should come from the forced source zone",
+    )
+
+
+def test_date_arithmetic_hours_with_units() -> None:
+    result = run_case("2026-04-01 +8 hours")
+    assert_equal(
+        extract_iso(result),
+        "2026-04-01T15:00:00Z",
+        "explicit hour units should offset from local midnight",
+    )
+
+
+def test_date_arithmetic_clock_style_hours() -> None:
+    result = run_case("2026-04-01 +7:30")
+    assert_equal(
+        extract_iso(result),
+        "2026-04-01T14:30:00Z",
+        "clock-style hour offsets should offset from local midnight",
+    )
+
+
+def test_date_arithmetic_integer_without_units_still_means_days() -> None:
+    result = run_case("2026-04-01 +8")
+    assert_equal(
+        extract_iso(result),
+        "2026-04-09T07:00:00Z",
+        "bare integers should continue to mean days",
+    )
+
+
+def test_date_arithmetic_iso_without_spaces_works() -> None:
+    result = run_case("2026-03-30+8")
+    assert_equal(
+        extract_iso(result),
+        "2026-04-07T07:00:00Z",
+        "ISO date arithmetic should allow compact operator syntax",
+    )
+
+
+def test_main_joins_multiple_argv_tokens() -> None:
+    env = os.environ.copy()
+    env.update(BASE_ENV)
+    result = subprocess.run(
+        ["python3", "workflow/main.py", "2026-03-30", "+", "8"],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=True,
+    )
+    parsed = json.loads(result.stdout)
+    assert_equal(
+        extract_iso(parsed),
+        "2026-04-07T07:00:00Z",
+        "main should join multiple argv tokens into one query",
+    )
+
+
 def test_duplicate_configured_zones_deduped() -> None:
     result = run_case(
         "now",
@@ -463,6 +559,27 @@ def main() -> None:
         ("invalid zone", test_invalid_zone),
         ("invalid date", test_invalid_date),
         ("invalid time", test_invalid_time),
+        ("date arithmetic iso plus days", test_date_arithmetic_iso_plus_days),
+        (
+            "date arithmetic month name defaults current year",
+            test_date_arithmetic_month_name_defaults_current_year,
+        ),
+        ("date arithmetic month name minus days", test_date_arithmetic_month_name_minus_days),
+        (
+            "date arithmetic forced zone uses zone year",
+            test_date_arithmetic_forced_zone_uses_zone_year,
+        ),
+        ("date arithmetic hours with units", test_date_arithmetic_hours_with_units),
+        ("date arithmetic clock style hours", test_date_arithmetic_clock_style_hours),
+        (
+            "date arithmetic integer without units means days",
+            test_date_arithmetic_integer_without_units_still_means_days,
+        ),
+        (
+            "date arithmetic iso without spaces works",
+            test_date_arithmetic_iso_without_spaces_works,
+        ),
+        ("main joins multiple argv tokens", test_main_joins_multiple_argv_tokens),
         ("configured zone dedupe", test_duplicate_configured_zones_deduped),
         ("modifier copy targets", test_modifier_copy_targets),
         ("dst nonexistent rejected", test_dst_nonexistent_rejected),

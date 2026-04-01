@@ -6,30 +6,44 @@ import os
 import re
 import sys
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
-@dataclass
-class Candidate:
-    date: datetime
-    source_label: str
+@dataclass(frozen=True)
+class InstantCandidate:
+    instant_utc: datetime
     label: str = ""
 
     def __post_init__(self) -> None:
-        if self.date.tzinfo is None:
-            raise ValueError("Candidate.date must be timezone-aware")
+        if self.instant_utc.tzinfo is None:
+            raise ValueError("InstantCandidate.instant_utc must be timezone-aware")
+        if self.instant_utc.utcoffset() != timedelta(0):
+            raise ValueError("InstantCandidate.instant_utc must be UTC")
 
 
-@dataclass
-class ParsedResult:
-    candidates: list[Candidate] = field(default_factory=list)
-    error: str | None = None
-    help: bool = False
+@dataclass(frozen=True)
+class ParsedInstant:
+    candidates: list[InstantCandidate]
+    interpretation: str
+    parser_name: str
 
 
-@dataclass
+@dataclass(frozen=True)
+class ParseErrorResult:
+    message: str
+
+
+@dataclass(frozen=True)
+class HelpResult:
+    pass
+
+
+ParseResult = ParsedInstant | ParseErrorResult | HelpResult
+
+
+@dataclass(frozen=True)
 class ParseContext:
     raw_text: str
     trimmed: str
@@ -38,10 +52,10 @@ class ParseContext:
     source_zone: str
 
 
-@dataclass
+@dataclass(frozen=True)
 class ParseAttempt:
-    parsed: ParsedResult | None = None
-    handled: bool = False
+    handled: bool
+    result: ParseResult | None = None
 
 
 ParserFn = Callable[[ParseContext], ParseAttempt]
@@ -51,6 +65,12 @@ def ensure_aware(dt: datetime) -> datetime:
     if dt.tzinfo is None:
         raise ValueError("Expected timezone-aware datetime")
     return dt
+
+
+def ensure_utc(dt: datetime) -> datetime:
+    aware = ensure_aware(dt)
+    utc_dt = aware.astimezone(UTC).replace(microsecond=0)
+    return ensure_aware(utc_dt)
 
 
 def env_flag(name: str, default: bool = False) -> bool:
@@ -108,6 +128,7 @@ DATE_FORMAT = env_str("UT_DATE_FORMAT", "%Y-%m-%d")
 COMPACT_DATE_FORMAT = env_str("UT_COMPACT_DATE_FORMAT", "%Y-%m-%d")
 MARKDOWN_DATE_FORMAT = env_str("UT_MARKDOWN_DATE_FORMAT", "%Y-%m-%d %H:%M")
 DISCORD_STYLE = env_str("UT_DISCORD_STYLE", "f")
+DEBUG_MODE = env_flag("UT_DEBUG", default=False)
 
 ZONE_ALIASES = {
     "utc": "UTC",
@@ -134,6 +155,12 @@ ZONE_ALIASES = {
     "jst": "Asia/Tokyo",
     "sydney": "Australia/Sydney",
     "melbourne": "Australia/Melbourne",
+    "aest": "Australia/Brisbane",
+    "aedt": "Australia/Sydney",
+    "cet": "Europe/Paris",
+    "cest": "Europe/Paris",
+    "nzst": "Pacific/Auckland",
+    "nzdt": "Pacific/Auckland",
 }
 
 WEEKDAY_ALIASES = {
@@ -154,6 +181,33 @@ WEEKDAY_ALIASES = {
     "saturday": 5,
     "sun": 6,
     "sunday": 6,
+}
+
+MONTH_ALIASES = {
+    "jan": 1,
+    "january": 1,
+    "feb": 2,
+    "february": 2,
+    "mar": 3,
+    "march": 3,
+    "apr": 4,
+    "april": 4,
+    "may": 5,
+    "jun": 6,
+    "june": 6,
+    "jul": 7,
+    "july": 7,
+    "aug": 8,
+    "august": 8,
+    "sep": 9,
+    "sept": 9,
+    "september": 9,
+    "oct": 10,
+    "october": 10,
+    "nov": 11,
+    "november": 11,
+    "dec": 12,
+    "december": 12,
 }
 
 
@@ -302,6 +356,10 @@ def get_today_parts_in_zone(zone: str) -> tuple[int, int, int]:
     return now.year, now.month, now.day
 
 
+def get_current_year_in_zone(zone: str) -> int:
+    return current_utc().astimezone(get_zoneinfo(zone)).year
+
+
 def parse_clock_time(text: str) -> tuple[int, int, int] | None:
     s = text.strip().lower()
 
@@ -377,12 +435,157 @@ def parse_date_time_like(text: str) -> dict[str, int | bool] | None:
     return None
 
 
+def parse_calendar_date(
+    text: str, zone: str
+) -> tuple[int, int, int] | ParseErrorResult | None:
+    s = text.strip()
+
+    iso_match = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", s)
+    if iso_match:
+        year = int(iso_match.group(1))
+        month = int(iso_match.group(2))
+        day = int(iso_match.group(3))
+        if not is_valid_date_parts(year, month, day):
+            return ParseErrorResult("Could not parse input.")
+        return year, month, day
+
+    month_name_match = re.fullmatch(
+        r"([A-Za-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,\s*|\s+)?(\d{4})?",
+        s,
+        re.IGNORECASE,
+    )
+    if not month_name_match:
+        return None
+
+    month_token = month_name_match.group(1).lower()
+    month = MONTH_ALIASES.get(month_token)
+    if month is None:
+        return None
+
+    day = int(month_name_match.group(2))
+    year = int(month_name_match.group(3) or get_current_year_in_zone(zone))
+
+    if not is_valid_date_parts(year, month, day):
+        return ParseErrorResult("Could not parse input.")
+
+    return year, month, day
+
+
+def parse_duration_with_units(text: str) -> timedelta | None:
+    parts = list(
+        re.finditer(
+            r"(\d+)\s*(seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h|days?|d|weeks?|w)",
+            text.strip().lower(),
+        )
+    )
+    if not parts:
+        return None
+
+    normalized = re.sub(
+        r"(\d+)\s*(seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h|days?|d|weeks?|w)",
+        "",
+        text.strip().lower(),
+    )
+    if normalized.strip():
+        return None
+
+    delta = timedelta(0)
+    for part in parts:
+        value = int(part.group(1))
+        unit = part.group(2)
+        if unit.startswith(("second", "sec")) or unit == "s":
+            delta += timedelta(seconds=value)
+        elif unit.startswith(("minute", "min")) or unit == "m":
+            delta += timedelta(minutes=value)
+        elif unit.startswith(("hour", "hr")) or unit == "h":
+            delta += timedelta(hours=value)
+        elif unit.startswith("day") or unit == "d":
+            delta += timedelta(days=value)
+        else:
+            delta += timedelta(weeks=value)
+
+    return delta
+
+
+def parse_date_arithmetic_offset(text: str) -> timedelta | None:
+    s = text.strip().lower()
+
+    if re.fullmatch(r"\d+", s):
+        return timedelta(days=int(s))
+
+    clock_match = re.fullmatch(r"(\d{1,3}):(\d{2})(?::(\d{2}))?", s)
+    if clock_match:
+        hours = int(clock_match.group(1))
+        minutes = int(clock_match.group(2))
+        seconds = int(clock_match.group(3) or 0)
+        if minutes > 59 or seconds > 59:
+            return None
+        return timedelta(hours=hours, minutes=minutes, seconds=seconds)
+
+    return parse_duration_with_units(s)
+
+
+def parse_date_arithmetic_parts(
+    date_text: str, operator: str, offset_text: str, zone: str
+) -> dict[str, int | bool] | ParseErrorResult | None:
+    parsed_date = parse_calendar_date(date_text, zone)
+    if parsed_date is None:
+        return None
+    if isinstance(parsed_date, ParseErrorResult):
+        return parsed_date
+
+    offset = parse_date_arithmetic_offset(offset_text)
+    if offset is None:
+        return ParseErrorResult("Could not parse input.")
+
+    year, month, day = parsed_date
+    sign = 1 if operator == "+" else -1
+    target_local = datetime(year, month, day) + (sign * offset)
+
+    return {
+        "has_date": True,
+        "year": target_local.year,
+        "month": target_local.month,
+        "day": target_local.day,
+        "hour": target_local.hour,
+        "minute": target_local.minute,
+        "second": target_local.second,
+    }
+
+
+def parse_date_arithmetic(
+    text: str, zone: str
+) -> dict[str, int | bool] | ParseErrorResult | None:
+    s = text.strip()
+
+    iso_match = re.fullmatch(r"(\d{4}-\d{2}-\d{2})\s*([+-])\s*(.+)", s)
+    if iso_match:
+        return parse_date_arithmetic_parts(
+            iso_match.group(1), iso_match.group(2), iso_match.group(3), zone
+        )
+
+    month_name_match = re.fullmatch(
+        r"([A-Za-z]+\s+\d{1,2}(?:st|nd|rd|th)?(?:,\s*|\s+)?(?:\d{4})?)\s*([+-])\s*(.+)",
+        s,
+        re.IGNORECASE,
+    )
+    if month_name_match:
+        return parse_date_arithmetic_parts(
+            month_name_match.group(1),
+            month_name_match.group(2),
+            month_name_match.group(3),
+            zone,
+        )
+
+    return None
+
+
 def parse_relative_weekday(text: str, zone: str) -> dict[str, int | bool] | None:
     s = text.strip().lower()
     match = re.fullmatch(
         r"(next\s+)?"
         r"(mon|monday|tue|tues|tuesday|wed|wednesday|thu|thur|thurs|thursday|fri|friday|sat|saturday|sun|sunday)"
-        r"\s+(.+)",
+        r"(?:\s+(.+))?",
         s,
     )
     if not match:
@@ -390,7 +593,7 @@ def parse_relative_weekday(text: str, zone: str) -> dict[str, int | bool] | None
 
     is_next = bool(match.group(1))
     weekday_name = match.group(2)
-    time_text = match.group(3).strip()
+    time_text = (match.group(3) or "9am").strip()
 
     time_part = parse_clock_time(time_text)
     if time_part is None:
@@ -449,6 +652,54 @@ def parse_relative_day(text: str, zone: str) -> dict[str, int | bool] | None:
         "year": target_date.year,
         "month": target_date.month,
         "day": target_date.day,
+        "hour": hour,
+        "minute": minute,
+        "second": second,
+    }
+
+
+def parse_relative_month_or_year(text: str, zone: str) -> dict[str, int | bool] | None:
+    s = text.strip().lower()
+    match = re.fullmatch(r"(next month|next year)\s+(.+)", s)
+    if not match:
+        return None
+
+    token = match.group(1)
+    time_text = match.group(2).strip()
+    time_part = parse_clock_time(time_text)
+    if time_part is None:
+        return None
+
+    hour, minute, second = time_part
+    now_local = current_utc().astimezone(get_zoneinfo(zone))
+    year = now_local.year
+    month = now_local.month
+    day = now_local.day
+
+    if token == "next month":
+        if month == 12:
+            target_year = year + 1
+            target_month = 1
+        else:
+            target_year = year
+            target_month = month + 1
+        target_day = day
+    else:
+        target_year = year + 1
+        target_month = month
+        target_day = day
+
+    if not is_valid_date_parts(target_year, target_month, target_day):
+        return {
+            "error": True,
+            "message": f"{token.title()} is invalid because that calendar date does not exist.",
+        }
+
+    return {
+        "has_date": True,
+        "year": target_year,
+        "month": target_month,
+        "day": target_day,
         "hour": hour,
         "minute": minute,
         "second": second,
@@ -515,7 +766,6 @@ def extract_forced_zone(text: str) -> dict[str, str] | None:
         return {
             "zone": resolve_zone(prefixed.group(1)),
             "rest": prefixed.group(2).strip(),
-            "position": "prefix",
         }
 
     suffixed = re.fullmatch(r"(.+)\s+([A-Za-z_./+\-]+)", s)
@@ -523,7 +773,6 @@ def extract_forced_zone(text: str) -> dict[str, str] | None:
         return {
             "zone": resolve_zone(suffixed.group(2)),
             "rest": suffixed.group(1).strip(),
-            "position": "suffix",
         }
 
     return None
@@ -592,7 +841,7 @@ def datetime_exists(local_dt: datetime) -> bool:
     return same_local_identity(aware, round_tripped)
 
 
-def build_datetime_candidates_in_zone(
+def build_local_candidates_in_zone(
     year: int,
     month: int,
     day: int,
@@ -600,70 +849,47 @@ def build_datetime_candidates_in_zone(
     minute: int,
     second: int,
     zone_name: str,
-    source_label: str,
-) -> ParsedResult:
+) -> list[InstantCandidate] | None:
     zone = get_zoneinfo(zone_name)
 
-    dt_fold_0 = datetime(
-        year,
-        month,
-        day,
-        hour,
-        minute,
-        second,
-        tzinfo=zone,
-        fold=0,
-    )
-    dt_fold_1 = datetime(
-        year,
-        month,
-        day,
-        hour,
-        minute,
-        second,
-        tzinfo=zone,
-        fold=1,
-    )
+    dt_fold_0 = datetime(year, month, day, hour, minute, second, tzinfo=zone, fold=0)
+    dt_fold_1 = datetime(year, month, day, hour, minute, second, tzinfo=zone, fold=1)
 
     exists_0 = datetime_exists(dt_fold_0)
     exists_1 = datetime_exists(dt_fold_1)
 
     if not exists_0 and not exists_1:
-        return ParsedResult(
-            error=f"Nonexistent local time in {zone_name} due to DST transition."
-        )
+        return None
 
-    candidates_by_iso: dict[str, datetime] = {}
+    candidates_by_iso: dict[str, InstantCandidate] = {}
 
     if exists_0:
-        utc_dt_0 = ensure_aware(dt_fold_0.astimezone(UTC))
-        candidates_by_iso[iso_utc(utc_dt_0)] = utc_dt_0
-
-    if exists_1:
-        utc_dt_1 = ensure_aware(dt_fold_1.astimezone(UTC))
-        candidates_by_iso[iso_utc(utc_dt_1)] = utc_dt_1
-
-    candidates = [candidates_by_iso[key] for key in sorted(candidates_by_iso.keys())]
-
-    if len(candidates) == 1:
-        return ParsedResult(
-            candidates=[Candidate(date=candidates[0], source_label=source_label)]
+        utc_0 = ensure_utc(dt_fold_0)
+        candidates_by_iso[iso_utc(utc_0)] = InstantCandidate(
+            instant_utc=utc_0,
+            label="",
         )
 
-    return ParsedResult(
-        candidates=[
-            Candidate(
-                date=candidates[0],
-                source_label=source_label,
-                label="Earlier occurrence",
+    if exists_1:
+        utc_1 = ensure_utc(dt_fold_1)
+        candidates_by_iso[iso_utc(utc_1)] = InstantCandidate(
+            instant_utc=utc_1,
+            label="",
+        )
+
+    ordered = [candidates_by_iso[key] for key in sorted(candidates_by_iso.keys())]
+
+    if len(ordered) == 2:
+        return [
+            InstantCandidate(
+                instant_utc=ordered[0].instant_utc, label="Earlier occurrence"
             ),
-            Candidate(
-                date=candidates[1],
-                source_label=source_label,
-                label="Later occurrence",
+            InstantCandidate(
+                instant_utc=ordered[1].instant_utc, label="Later occurrence"
             ),
         ]
-    )
+
+    return ordered
 
 
 def build_parse_context(text: str) -> ParseContext:
@@ -682,15 +908,12 @@ def build_parse_context(text: str) -> ParseContext:
     )
 
 
-def build_source_label(ctx: ParseContext) -> str:
-    if ctx.forced_zone:
-        return f"Interpreted in {ctx.source_zone}"
-    return f"Interpreted in local timezone ({CONFIGURED_LOCAL_TZ})"
-
-
 def parse_structured_local_datetime(
     parsed: dict[str, int | bool], ctx: ParseContext
-) -> ParsedResult:
+) -> ParseResult:
+    if bool(parsed.get("error")):
+        return ParseErrorResult(str(parsed["message"]))
+
     if bool(parsed["has_date"]):
         year = int(parsed["year"])
         month = int(parsed["month"])
@@ -698,7 +921,7 @@ def parse_structured_local_datetime(
     else:
         year, month, day = get_today_parts_in_zone(ctx.source_zone)
 
-    return build_datetime_candidates_in_zone(
+    candidates = build_local_candidates_in_zone(
         year,
         month,
         day,
@@ -706,55 +929,78 @@ def parse_structured_local_datetime(
         int(parsed["minute"]),
         int(parsed["second"]),
         ctx.source_zone,
-        build_source_label(ctx),
+    )
+
+    if candidates is None:
+        return ParseErrorResult(
+            f"Nonexistent local time in {ctx.source_zone} due to DST transition."
+        )
+
+    interpretation = (
+        f"Interpreted in {ctx.source_zone}"
+        if ctx.forced_zone
+        else f"Interpreted in local timezone ({CONFIGURED_LOCAL_TZ})"
+    )
+
+    return ParsedInstant(
+        candidates=candidates,
+        interpretation=interpretation,
+        parser_name="local-datetime",
     )
 
 
-def parse_discord_timestamp(text: str) -> ParsedResult | None:
+def parse_discord_timestamp(text: str) -> ParsedInstant | None:
     s = text.strip()
-
     match = re.fullmatch(r"<t:(\d{1,16})(?::([tTdDfFR]))?>", s)
     if not match:
         return None
 
     epoch_seconds = int(match.group(1))
-    dt = ensure_aware(datetime.fromtimestamp(epoch_seconds, UTC))
-
+    dt = ensure_aware(datetime.fromtimestamp(epoch_seconds, UTC)).replace(microsecond=0)
     style = match.group(2)
-    source_label = "Discord timestamp"
+    interpretation = "Discord timestamp"
     if style:
-        source_label = f"Discord timestamp ({style})"
+        interpretation = f"Discord timestamp ({style})"
 
-    return ParsedResult(candidates=[Candidate(date=dt, source_label=source_label)])
+    return ParsedInstant(
+        candidates=[InstantCandidate(instant_utc=dt)],
+        interpretation=interpretation,
+        parser_name="discord",
+    )
 
 
 def parser_discord_timestamp(ctx: ParseContext) -> ParseAttempt:
     parsed = parse_discord_timestamp(ctx.trimmed)
     if parsed is None:
         return ParseAttempt(handled=False)
-
-    return ParseAttempt(parsed=parsed, handled=True)
+    return ParseAttempt(handled=True, result=parsed)
 
 
 def parser_explicit_instant(ctx: ParseContext) -> ParseAttempt:
     s = ctx.trimmed
 
     if re.fullmatch(r"\d{10}", s):
-        dt = ensure_aware(datetime.fromtimestamp(int(s), UTC))
+        dt = ensure_aware(datetime.fromtimestamp(int(s), UTC)).replace(microsecond=0)
         return ParseAttempt(
-            parsed=ParsedResult(
-                candidates=[Candidate(date=dt, source_label="Unix seconds")]
-            ),
             handled=True,
+            result=ParsedInstant(
+                candidates=[InstantCandidate(instant_utc=dt)],
+                interpretation="Unix seconds",
+                parser_name="epoch-seconds",
+            ),
         )
 
     if re.fullmatch(r"\d{13}", s):
-        dt = ensure_aware(datetime.fromtimestamp(int(s) / 1000, UTC))
+        dt = ensure_aware(datetime.fromtimestamp(int(s) / 1000, UTC)).replace(
+            microsecond=0
+        )
         return ParseAttempt(
-            parsed=ParsedResult(
-                candidates=[Candidate(date=dt, source_label="Unix milliseconds")]
-            ),
             handled=True,
+            result=ParsedInstant(
+                candidates=[InstantCandidate(instant_utc=dt)],
+                interpretation="Unix milliseconds",
+                parser_name="epoch-milliseconds",
+            ),
         )
 
     iso_candidate = s[:-1] + "+00:00" if s.endswith("Z") else s
@@ -768,15 +1014,12 @@ def parser_explicit_instant(ctx: ParseContext) -> ParseAttempt:
             return ParseAttempt(handled=False)
 
         return ParseAttempt(
-            parsed=ParsedResult(
-                candidates=[
-                    Candidate(
-                        date=ensure_aware(dt.astimezone(UTC)),
-                        source_label="ISO instant",
-                    )
-                ]
-            ),
             handled=True,
+            result=ParsedInstant(
+                candidates=[InstantCandidate(instant_utc=ensure_utc(dt))],
+                interpretation="ISO instant",
+                parser_name="iso-instant",
+            ),
         )
 
     return ParseAttempt(handled=False)
@@ -787,15 +1030,15 @@ def parser_now_relative(ctx: ParseContext) -> ParseAttempt:
     if delta is None:
         return ParseAttempt(handled=False)
 
-    dt = ensure_aware(current_utc() + delta)
-    label = ctx.body.lower()
-    source_label = f"Current time ({label})"
-    if ctx.forced_zone:
-        source_label = f"{source_label} with explicit timezone token {ctx.source_zone}"
-
+    dt = ensure_utc(current_utc() + delta)
+    interpretation = f"Current time ({ctx.body.lower()})"
     return ParseAttempt(
-        parsed=ParsedResult(candidates=[Candidate(date=dt, source_label=source_label)]),
         handled=True,
+        result=ParsedInstant(
+            candidates=[InstantCandidate(instant_utc=dt)],
+            interpretation=interpretation,
+            parser_name="now-relative",
+        ),
     )
 
 
@@ -804,15 +1047,34 @@ def parser_in_relative(ctx: ParseContext) -> ParseAttempt:
     if delta is None:
         return ParseAttempt(handled=False)
 
-    dt = ensure_aware(current_utc() + delta)
-    source_label = f"Relative time ({ctx.body.lower()})"
-    if ctx.forced_zone:
-        source_label = f"{source_label} with explicit timezone token {ctx.source_zone}"
-
+    dt = ensure_utc(current_utc() + delta)
+    interpretation = f"Relative time ({ctx.body.lower()})"
     return ParseAttempt(
-        parsed=ParsedResult(candidates=[Candidate(date=dt, source_label=source_label)]),
         handled=True,
+        result=ParsedInstant(
+            candidates=[InstantCandidate(instant_utc=dt)],
+            interpretation=interpretation,
+            parser_name="in-relative",
+        ),
     )
+
+
+def parser_relative_month_or_year(ctx: ParseContext) -> ParseAttempt:
+    parsed = parse_relative_month_or_year(ctx.body, ctx.source_zone)
+    if parsed is None:
+        return ParseAttempt(handled=False)
+
+    result = parse_structured_local_datetime(parsed, ctx)
+    if isinstance(result, ParsedInstant):
+        return ParseAttempt(
+            handled=True,
+            result=ParsedInstant(
+                candidates=result.candidates,
+                interpretation=result.interpretation,
+                parser_name="relative-month-year",
+            ),
+        )
+    return ParseAttempt(handled=True, result=result)
 
 
 def parser_relative_day(ctx: ParseContext) -> ParseAttempt:
@@ -820,10 +1082,17 @@ def parser_relative_day(ctx: ParseContext) -> ParseAttempt:
     if parsed is None:
         return ParseAttempt(handled=False)
 
-    return ParseAttempt(
-        parsed=parse_structured_local_datetime(parsed, ctx),
-        handled=True,
-    )
+    result = parse_structured_local_datetime(parsed, ctx)
+    if isinstance(result, ParsedInstant):
+        return ParseAttempt(
+            handled=True,
+            result=ParsedInstant(
+                candidates=result.candidates,
+                interpretation=result.interpretation,
+                parser_name="relative-day",
+            ),
+        )
+    return ParseAttempt(handled=True, result=result)
 
 
 def parser_relative_weekday(ctx: ParseContext) -> ParseAttempt:
@@ -831,10 +1100,37 @@ def parser_relative_weekday(ctx: ParseContext) -> ParseAttempt:
     if parsed is None:
         return ParseAttempt(handled=False)
 
-    return ParseAttempt(
-        parsed=parse_structured_local_datetime(parsed, ctx),
-        handled=True,
-    )
+    result = parse_structured_local_datetime(parsed, ctx)
+    if isinstance(result, ParsedInstant):
+        return ParseAttempt(
+            handled=True,
+            result=ParsedInstant(
+                candidates=result.candidates,
+                interpretation=result.interpretation,
+                parser_name="relative-weekday",
+            ),
+        )
+    return ParseAttempt(handled=True, result=result)
+
+
+def parser_date_arithmetic(ctx: ParseContext) -> ParseAttempt:
+    parsed = parse_date_arithmetic(ctx.body, ctx.source_zone)
+    if parsed is None:
+        return ParseAttempt(handled=False)
+    if isinstance(parsed, ParseErrorResult):
+        return ParseAttempt(handled=True, result=parsed)
+
+    result = parse_structured_local_datetime(parsed, ctx)
+    if isinstance(result, ParsedInstant):
+        return ParseAttempt(
+            handled=True,
+            result=ParsedInstant(
+                candidates=result.candidates,
+                interpretation=f"Date arithmetic in {ctx.source_zone}",
+                parser_name="date-arithmetic",
+            ),
+        )
+    return ParseAttempt(handled=True, result=result)
 
 
 def parser_date_or_time(ctx: ParseContext) -> ParseAttempt:
@@ -842,47 +1138,59 @@ def parser_date_or_time(ctx: ParseContext) -> ParseAttempt:
     if parsed is None:
         return ParseAttempt(handled=False)
 
-    return ParseAttempt(
-        parsed=parse_structured_local_datetime(parsed, ctx),
-        handled=True,
-    )
+    result = parse_structured_local_datetime(parsed, ctx)
+    if isinstance(result, ParsedInstant):
+        return ParseAttempt(
+            handled=True,
+            result=ParsedInstant(
+                candidates=result.candidates,
+                interpretation=result.interpretation,
+                parser_name="date-or-time",
+            ),
+        )
+    return ParseAttempt(handled=True, result=result)
 
 
+# Parsing priority is a behavior contract. Do not reorder casually.
 PARSER_CHAIN: tuple[ParserFn, ...] = (
     parser_discord_timestamp,
     parser_explicit_instant,
     parser_now_relative,
     parser_in_relative,
+    parser_relative_month_or_year,
     parser_relative_day,
     parser_relative_weekday,
+    parser_date_arithmetic,
     parser_date_or_time,
 )
 
 
-def parse_input(text: str) -> ParsedResult:
+def parse_input(text: str) -> ParseResult:
     if not text:
-        return ParsedResult(help=True)
+        return HelpResult()
 
     ctx = build_parse_context(text)
 
     if ctx.forced_zone and not is_valid_timezone(ctx.source_zone):
-        return ParsedResult(error=f"Invalid timezone: {ctx.source_zone}")
+        return ParseErrorResult(f"Invalid timezone: {ctx.source_zone}")
 
     if not is_valid_timezone(ctx.source_zone):
-        return ParsedResult(error=f"Invalid timezone: {ctx.source_zone}")
+        return ParseErrorResult(f"Invalid timezone: {ctx.source_zone}")
 
     for parser in PARSER_CHAIN:
         attempt = parser(ctx)
         if attempt.handled:
-            if attempt.parsed is None:
-                return ParsedResult(error="Could not parse input.")
-            return attempt.parsed
+            return attempt.result or ParseErrorResult("Could not parse input.")
 
-    return ParsedResult(error="Could not parse input.")
+    return ParseErrorResult("Could not parse input.")
 
 
-def zone_item(candidate: Candidate, zone: str) -> dict[str, object]:
-    dt = ensure_aware(candidate.date.astimezone(UTC))
+def zone_item(
+    parsed: ParsedInstant,
+    candidate: InstantCandidate,
+    zone: str,
+) -> dict[str, object]:
+    dt = candidate.instant_utc
     zone_value = format_in_zone(dt, zone)
     utc_value = format_in_zone(dt, "UTC")
     local_value = format_in_zone(dt, CONFIGURED_LOCAL_TZ)
@@ -894,51 +1202,44 @@ def zone_item(candidate: Candidate, zone: str) -> dict[str, object]:
     discord_value = format_discord_timestamp(dt)
 
     title_prefix = f"{candidate.label} · " if candidate.label else ""
-    subtitle_prefix = f"{candidate.label} · " if candidate.label else ""
+    subtitle = f"{parsed.interpretation} → Enter copies formatted time"
+    if DEBUG_MODE:
+        subtitle = f"{subtitle} · parser={parsed.parser_name}"
 
     return {
         "title": f"{title_prefix}{zone}: {zone_value}",
-        "subtitle": f"{subtitle_prefix}{candidate.source_label} → Enter copies formatted time",
+        "subtitle": subtitle,
         "arg": zone_value,
         "mods": {
-            "cmd": {
-                "arg": iso_value,
-                "subtitle": f"{subtitle_prefix}Copy ISO",
-            },
-            "alt": {
-                "arg": epoch_seconds,
-                "subtitle": f"{subtitle_prefix}Copy Unix seconds",
-            },
-            "ctrl": {
-                "arg": utc_value,
-                "subtitle": f"{subtitle_prefix}Copy UTC formatted",
-            },
+            "cmd": {"arg": iso_value, "subtitle": "Copy ISO"},
+            "alt": {"arg": epoch_seconds, "subtitle": "Copy Unix seconds"},
+            "ctrl": {"arg": utc_value, "subtitle": "Copy UTC formatted"},
             "shift": {
                 "arg": local_value,
-                "subtitle": f"{subtitle_prefix}Copy configured local formatted",
+                "subtitle": "Copy configured local formatted",
             },
             "fn": {
                 "arg": markdown_value,
-                "subtitle": f"{subtitle_prefix}Copy markdown-friendly format",
+                "subtitle": "Copy markdown-friendly format",
             },
             "cmd+alt": {
                 "arg": discord_value,
-                "subtitle": f"{subtitle_prefix}Copy Discord timestamp",
+                "subtitle": "Copy Discord timestamp",
             },
             "cmd+ctrl": {
                 "arg": rfc3339_value,
-                "subtitle": f"{subtitle_prefix}Copy RFC 3339",
+                "subtitle": "Copy RFC 3339",
             },
             "alt+shift": {
                 "arg": compact_value,
-                "subtitle": f"{subtitle_prefix}Copy compact format",
+                "subtitle": "Copy compact format",
             },
         },
     }
 
 
-def utility_items(candidate: Candidate) -> list[dict[str, object]]:
-    dt = ensure_aware(candidate.date.astimezone(UTC))
+def utility_items(candidate: InstantCandidate) -> list[dict[str, object]]:
+    dt = candidate.instant_utc
     iso_value = iso_utc(dt)
     epoch_seconds = int(dt.timestamp())
     epoch_millis = int(dt.timestamp() * 1000)
@@ -987,24 +1288,24 @@ def utility_items(candidate: Candidate) -> list[dict[str, object]]:
     ]
 
 
-def build_items(parsed: ParsedResult) -> list[dict[str, object]]:
-    if parsed.help:
+def render_items(result: ParseResult) -> list[dict[str, object]]:
+    if isinstance(result, HelpResult):
         return [
             {
                 "title": "Enter a time to convert",
                 "subtitle": (
                     "Examples: now · now+1h · in 3 hours · tomorrow 9am · "
-                    "next monday 9am · 9am PST · <t:1711540800:f>"
+                    "next monday · next month 9am · April 1 +7 · 9am PST · <t:1711540800:f>"
                 ),
                 "valid": False,
             }
         ]
 
-    if parsed.error:
+    if isinstance(result, ParseErrorResult):
         return [
             {
                 "title": "Invalid input",
-                "subtitle": parsed.error,
+                "subtitle": result.message,
                 "valid": False,
             }
         ]
@@ -1019,17 +1320,18 @@ def build_items(parsed: ParsedResult) -> list[dict[str, object]]:
 
     items: list[dict[str, object]] = []
 
-    for candidate in parsed.candidates:
+    for candidate in result.candidates:
         for zone in display_zones:
-            items.append(zone_item(candidate, zone))
+            items.append(zone_item(result, candidate, zone))
         items.extend(utility_items(candidate))
 
     return items
 
 
 def main() -> int:
-    raw = (sys.argv[1] if len(sys.argv) > 1 else "").strip()
-    items = build_items(parse_input(raw))
+    raw = " ".join(sys.argv[1:]).strip()
+    result = parse_input(raw)
+    items = render_items(result)
     sys.stdout.write(json.dumps({"items": items}, ensure_ascii=False))
     return 0
 

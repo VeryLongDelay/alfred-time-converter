@@ -23,7 +23,11 @@ build:
 
 build-workflow:
 	rm -f $(WORKFLOW_FILE)
-	cd $(WORKFLOW_DIR) && zip -r ../$(WORKFLOW_FILE) . -x '*.DS_Store'
+	cd $(WORKFLOW_DIR) && zip -r ../$(WORKFLOW_FILE) . \
+		-x '*.DS_Store' \
+		-x '__pycache__/*' \
+		-x '*.pyc' \
+		-x '.pytest_cache/*'
 
 clean:
 	rm -f $(SOURCE_ZIP) $(WORKFLOW_FILE)

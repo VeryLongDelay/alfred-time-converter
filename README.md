@@ -43,6 +43,10 @@ ut next week 9am
 ut monday 9am
 ut next monday 9am
 ut next monday 9am JST
+ut 2026-04-01 +7
+ut April 1 +7
+ut 2026-04-01 +8 hours
+ut April 1 +7:30
 ```
 
 ### Timezone support
@@ -195,6 +199,10 @@ Supported without external libraries:
 - `next week 9am`
 - `monday 9am`
 - `next monday 9am`
+- `2026-04-01 +7`
+- `April 1 +7` (assumes the current year)
+- `2026-04-01 +8 hours`
+- `April 1 +7:30`
 
 ## Abbreviation parsing behavior
 
