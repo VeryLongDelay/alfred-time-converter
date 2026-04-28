@@ -779,18 +779,19 @@ def extract_forced_zone(text: str) -> dict[str, str] | None:
 
 
 def parse_now_offset(text: str) -> timedelta | None:
-    match = re.fullmatch(r"now((?:[+-]\d+[smhdw])*)", text.strip().lower())
+    s = text.strip().lower()
+    match = re.fullmatch(r"now\s*((?:[+-]\s*\d+\s*[smhdw]\s*)*)", s)
     if not match:
         return None
 
-    suffix = match.group(1)
+    suffix = match.group(1).strip()
     if not suffix:
         return timedelta(0)
 
     delta = timedelta(0)
     consumed = 0
 
-    for part in re.finditer(r"([+-])(\d+)([smhdw])", suffix):
+    for part in re.finditer(r"([+-])\s*(\d+)\s*([smhdw])\s*", suffix):
         consumed += len(part.group(0))
         sign = 1 if part.group(1) == "+" else -1
         value = int(part.group(2))
@@ -813,7 +814,6 @@ def parse_now_offset(text: str) -> timedelta | None:
         return None
 
     return delta
-
 
 def same_local_identity(left: datetime, right: datetime) -> bool:
     left_aware = ensure_aware(left)

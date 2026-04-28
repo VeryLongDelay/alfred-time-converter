@@ -61,7 +61,7 @@
 			<key>uid</key>
 			<string>D49241C5-CBC8-4AAE-AD8F-3D7CF2225640</string>
 			<key>version</key>
-			<string>1.1.1</string>
+			<integer>1</integer>
 		</dict>
 		<dict>
 			<key>config</key>
@@ -338,8 +338,10 @@ Please refer to https://github.com/verylongdelay/alfred-time-converter for detai
 			<string>UT_DISCORD_STYLE</string>
 		</dict>
 	</array>
+	<key>variablesdontexport</key>
+	<array/>
 	<key>version</key>
-	<string>1.0.0</string>
+	<string>1.2.1</string>
 	<key>webaddress</key>
 	<string>https://github.com/verylongdelay/alfred-unixtime-converter</string>
 </dict>
