@@ -540,6 +540,18 @@ def test_csv_extra_timezones_override_legacy() -> None:
         "Legacy zones should be ignored",
     )
 
+def test_now_plus_hour_with_spaces() -> None:
+    result = run_case("now + 1h")
+    assert_equal(extract_iso(result), "2026-03-27T13:00:00Z", "now + 1h failed")
+
+def test_now_compound_offset_with_spaces() -> None:
+    result = run_case("now + 1h - 30m + 15s")
+    assert_equal(
+        extract_iso(result),
+        "2026-03-27T12:30:15Z",
+        "compound spaced now offset failed",
+    )
+
 
 def main() -> None:
     tests = [
@@ -604,6 +616,8 @@ def main() -> None:
         ("empty extra zones skipped", test_empty_extra_timezones_skipped),
         ("invalid extra zones skipped", test_invalid_extra_timezones_skipped),
         ("csv extra zones override legacy", test_csv_extra_timezones_override_legacy),
+        ("now + 1h", test_now_plus_hour_with_spaces),
+        ("compound spaced now offset", test_now_compound_offset_with_spaces),
     ]
 
     for name, fn in tests:
